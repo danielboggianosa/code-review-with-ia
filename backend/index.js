@@ -52,13 +52,10 @@ async function postReviewComment(owner, repo, prNumber, filename, comment, heade
 }
 
 // Helper functions
-function buildMcpPrompt({ project_name, repo_url, current_task, user_notes, last_model_action, file, content }) {
+function buildMcpPrompt({ project_name, repo_url, file, content }) {
   return `
 Proyecto: ${project_name}
 Repositorio: ${repo_url}
-Tarea actual: ${current_task}
-Notas del usuario: ${user_notes}
-Última acción del modelo: ${last_model_action}
 Archivo: ${file}
 
 Contenido del archivo:
@@ -195,10 +192,7 @@ app.post('/mcp/context', async (req, res) => {
   const {
     project_name,
     repo_url,
-    current_task,
     context_files,
-    user_notes,
-    last_model_action
   } = req.body;
 
   if (!context_files || !Array.isArray(context_files)) {
@@ -220,9 +214,6 @@ app.post('/mcp/context', async (req, res) => {
         const prompt = buildMcpPrompt({
           project_name,
           repo_url,
-          current_task,
-          user_notes,
-          last_model_action,
           file,
           content
         });
