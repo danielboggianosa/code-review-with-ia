@@ -1,0 +1,11 @@
+POST http://localhost:3000/mcp/context
+Content-Type: application/json
+
+{
+  "project_name": "money-app",
+  "repo_url": "https://github.com/GlobalS1/money-app",
+  "current_task": "Revisar performance y buenas prácticas en auth.service.js",
+  "context_files": ["src/services/auth.service.js", "README.md"],
+  "user_notes": "Validar si se cumplen principios SOLID y separación de responsabilidades.",
+  "last_model_action": "Identificó problemas de manejo de errores y sugirió modularización."
+}
