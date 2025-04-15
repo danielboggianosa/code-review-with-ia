@@ -64,7 +64,7 @@ Archivo: ${file}
 Contenido del archivo:
 ${content}
 
-👉 Revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad. Agrega TODOs si es necesario.
+👉 Actúa como un desarrollador senior y revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad basados en los lineamientos de SonarQube. Agrega comentarios con TODOs encima de cada línea si consideras necesario.
   `;
 }
 
@@ -78,22 +78,27 @@ async function fetchGithubFileContent(repo_url, file, headers) {
   return Buffer.from(fileResponse.data.content, 'base64').toString('utf8');
 }
 
-async function getOpenAiSuggestions(prompt, headers) {
-  const response = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+async function getOpenAiSuggestions(prompt) {
+  try {
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'o1-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 1,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        }
       }
-    }
-  );
-  return response.data.choices[0].message.content;
+    );
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.log('Error al obtener sugerencias', { error:error.response.data });
+
+  }
 }
 
 async function createAutoPR(repo_url, context_files, results) {
@@ -117,7 +122,7 @@ async function createAutoPR(repo_url, context_files, results) {
     if (!fs.existsSync(filePath)) continue;
 
     const original = fs.readFileSync(filePath, 'utf8');
-    const updated = original + `\n\n// TODOs sugeridos por IA:\n// ${results[i].replace(/\n/g, '\n// ')}`;
+    const updated = original + `\n\n// TODOs sugeridos por IA:\n// ${results[i]?.replace(/\n/g, '\n// ')}`;
     fs.writeFileSync(filePath, updated, 'utf8');
   }
 
