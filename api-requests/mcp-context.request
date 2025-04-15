@@ -3,9 +3,10 @@ Content-Type: application/json
 
 {
   "project_name": "money-app",
-  "repo_url": "https://github.com/GlobalS1/money-app",
+  "repo_url": "https://github.com/Global-S1/globals1-moneyapp-back-front",
   "current_task": "Revisar performance y buenas prácticas en auth.service.js",
-  "context_files": ["src/services/auth.service.js", "README.md"],
+  "context_files": ["backend/src/models/user.model.js"],
   "user_notes": "Validar si se cumplen principios SOLID y separación de responsabilidades.",
-  "last_model_action": "Identificó problemas de manejo de errores y sugirió modularización."
+  "last_model_action": "Identificó problemas de manejo de errores y sugirió modularización.",
+  "create_pr": true
 }
