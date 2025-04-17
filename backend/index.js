@@ -9,7 +9,7 @@ const environments = {
   PORT: process.env.PORT || 3000,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-  OPENAI_MODEL: process.env.OPENAI_MODEL || 'o1-mini',
+  OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4.1',
 };
 
 const app = express();
@@ -62,7 +62,7 @@ async function postReviewComment(owner, repo, prNumber, filename, comment, heade
 }
 
 // Helper functions
-function buildMcpPrompt({ project_name, repo_url, file, content }) {
+function buildMcpPrompt({ project_name, repo_url, file, content, language = 'español' }) {
   return `
 Proyecto: ${project_name}
 Repositorio: ${repo_url}
@@ -71,7 +71,7 @@ Archivo: ${file}
 Contenido del archivo:
 ${content}
 
-👉 Actúa como un desarrollador senior y revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad basados en los lineamientos de SonarQube. Agrega comentarios con TODOs encima de cada línea si consideras necesario. Se lo más conciso posible para reducir la cantidad de tokens al maximo.
+👉 Actúa como un desarrollador senior y revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad basados en los lineamientos de SonarQube. Agrega comentarios con TODOs encima de cada línea si consideras necesario. Se lo más conciso posible para reducir la cantidad de tokens al maximo. Todo el texto agregado debe ir con signos comentarios de la siguiente forma: (/* [TODOS o sugerencias en múltiples líneas] */). Usa ${language} para hacer los comentarios. Debes devolver 2 elementos, el primero debe ser el código con los comentarios, es segundo un resumen o sugerencias adicionales, debes separarlo por ########
   `;
 }
 
@@ -90,7 +90,7 @@ async function getOpenAiSuggestions(prompt) {
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: 'o1-mini',
+        model: 'gpt-4.1',
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
       },
@@ -104,56 +104,62 @@ async function getOpenAiSuggestions(prompt) {
     return response.data.choices[0].message.content;
   } catch (error) {
     console.log('Error al obtener sugerencias', { error: error.response.data });
-
   }
 }
 
 async function createAutoPR(repo_url, context_files, results) {
-  const simpleGit = require('simple-git');
-  const { execSync } = require('child_process');
-  const fs = require('fs');
-  const path = require('path');
-  const tmp = require('os').tmpdir();
-  const timestamp = Date.now();
-  const branchName = `mcp-review-${timestamp}`;
-  const [owner, repo] = repo_url.split('/').slice(-2);
-  const localPath = path.join(tmp, `${repo}-${timestamp}`);
+  try {
 
-  execSync(`git clone https://github.com/${owner}/${repo}.git ${localPath}`);
-  const git = simpleGit(localPath);
+    const simpleGit = require('simple-git');
+    const { execSync } = require('child_process');
+    const fs = require('fs');
+    const path = require('path');
+    const tmp = require('os').tmpdir();
+    const timestamp = Date.now();
+    const branchName = `code-review-${timestamp}`;
+    const [owner, repo] = repo_url.split('/').slice(-2);
+    const localPath = path.join(tmp, `${repo}-${timestamp}`);
 
-  await git.checkoutLocalBranch(branchName);
+    execSync(`git clone https://github.com/${owner}/${repo}.git ${localPath}`);
+    const git = simpleGit(localPath);
 
-  for (let i = 0; i < context_files.length; i++) {
-    const filePath = path.join(localPath, context_files[i]);
-    if (!fs.existsSync(filePath)) continue;
+    await git.checkoutLocalBranch(branchName);
 
-    const original = fs.readFileSync(filePath, 'utf8');
-    const updated = original + `\n\n// TODOs sugeridos por IA:\n// ${results[i]?.replace(/\n/g, '\n// ')}`;
-    fs.writeFileSync(filePath, updated, 'utf8');
-  }
+    for (let i = 0; i < context_files.length; i++) {
+      const filePath = path.join(localPath, context_files[i]);
+      if (!fs.existsSync(filePath)) continue;
 
-  await git.add('.');
-  await git.commit('chore: agregar TODOs sugeridos por IA (MCP)');
-  await git.push('origin', branchName);
+      const updated = results[i][0]
+        .replace('```javascript\n', '')
+        .replace('```\n\n', '');
 
-  const prResponse = await axios.post(
-    `https://api.github.com/repos/${owner}/${repo}/pulls`,
-    {
-      title: `Revisión MCP - ${new Date().toISOString()}`,
-      head: branchName,
-      base: 'main',
-      body: results.map((r, i) => `### ${context_files[i]}\n\n${r}`).join('\n\n---\n\n')
-    },
-    {
-      headers: {
-        Authorization: `token ${environments.GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3+json',
-      }
+      fs.writeFileSync(filePath, updated, 'utf8');
     }
-  );
 
-  console.log('PR creado con éxito:', prResponse.data.html_url);
+    await git.add('.');
+    await git.commit('chore: agregar cambios sugeridos');
+    await git.push('origin', branchName);
+
+    const prResponse = await axios.post(
+      `https://api.github.com/repos/${owner}/${repo}/pulls`,
+      {
+        title: `Revisión - ${new Date().toISOString()}`,
+        head: branchName,
+        base: 'main',
+        body: results.map((r, i) => `### ${context_files[i]}\n\n${r[1] ?? ''}`).join('\n\n---\n\n')
+      },
+      {
+        headers: {
+          Authorization: `token ${environments.GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github.v3+json',
+        }
+      }
+    );
+
+    console.log('PR creado con éxito:', prResponse.data.html_url);
+  } catch (error) {
+    console.error('Error al crear PR:', error.message);
+  }
 }
 
 // Endpoint para recibir webhooks de GitHub
@@ -222,12 +228,16 @@ app.post('/mcp/context', async (req, res) => {
     for (const file of context_files) {
       try {
         const content = await fetchGithubFileContent(repo_url, file, headers);
-        const prompt = buildMcpPrompt({
-          project_name,
-          repo_url,
-          file,
-          content
-        });
+        let prompt = "";
+
+        if (content)
+          prompt = buildMcpPrompt({
+            project_name,
+            repo_url,
+            file,
+            content
+          });
+
         prompts.push(prompt);
       } catch (err) {
         console.warn(`No se pudo obtener el archivo ${file}:`, err.message);
@@ -236,8 +246,9 @@ app.post('/mcp/context', async (req, res) => {
 
     const results = [];
     for (const prompt of prompts) {
-      const suggestion = await getOpenAiSuggestions(prompt);
-      results.push(suggestion);
+      let suggestion = ""
+      if (prompt) suggestion = await getOpenAiSuggestions(prompt);
+      results.push(suggestion?.split('########'));
     }
 
     res.json({ results });
@@ -283,7 +294,7 @@ async function listGithubFilesRecursive(owner, repo, path = '', accumulator = []
 
 app.post('/mcp/files', async (req, res) => {
   const { repo_url, extensions } = req.body; // extensions es opcional
-  
+
   if (!repo_url) {
     return res.status(400).json({ error: 'Se requiere repo_url' });
   }
