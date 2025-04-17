@@ -1,12 +1,22 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const cors = require('cors');
+const morgan = require('morgan');
 require('dotenv').config();
 
+const environments = {
+  PORT: process.env.PORT || 3000,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+  OPENAI_MODEL: process.env.OPENAI_MODEL || 'o1-mini',
+};
+
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
+app.use(cors());
+app.use(morgan('dev'));
 
 async function getChangedFiles(owner, repo, prNumber, headers) {
   const response = await axios.get(
@@ -29,14 +39,14 @@ async function getReviewFromOpenAI(prompt) {
   const response = await axios.post(
     'https://api.openai.com/v1/chat/completions',
     {
-      model: 'gpt-4',
+      model: environments.OPENAI_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
+      temperature: 1,
     },
     {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${environments.OPENAI_API_KEY}`,
       },
     }
   );
@@ -61,7 +71,7 @@ Archivo: ${file}
 Contenido del archivo:
 ${content}
 
-👉 Actúa como un desarrollador senior y revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad basados en los lineamientos de SonarQube. Agrega comentarios con TODOs encima de cada línea si consideras necesario.
+👉 Actúa como un desarrollador senior y revisa el contenido del archivo y sugiere mejoras sobre buenas prácticas, legibilidad y escalabilidad basados en los lineamientos de SonarQube. Agrega comentarios con TODOs encima de cada línea si consideras necesario. Se lo más conciso posible para reducir la cantidad de tokens al maximo.
   `;
 }
 
@@ -87,13 +97,13 @@ async function getOpenAiSuggestions(prompt) {
       {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          Authorization: `Bearer ${environments.OPENAI_API_KEY}`,
         }
       }
     );
     return response.data.choices[0].message.content;
   } catch (error) {
-    console.log('Error al obtener sugerencias', { error:error.response.data });
+    console.log('Error al obtener sugerencias', { error: error.response.data });
 
   }
 }
@@ -137,7 +147,7 @@ async function createAutoPR(repo_url, context_files, results) {
     },
     {
       headers: {
-        Authorization: `token ${process.env.GITHUB_TOKEN}`,
+        Authorization: `token ${environments.GITHUB_TOKEN}`,
         Accept: 'application/vnd.github.v3+json',
       }
     }
@@ -158,7 +168,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log(`Revisión de PR #${prNumber} en ${owner}/${repo}`);
 
-    const githubToken = process.env.GITHUB_TOKEN;
+    const githubToken = environments.GITHUB_TOKEN;
     const headers = {
       Authorization: `token ${githubToken}`,
       Accept: 'application/vnd.github.v3+json',
@@ -193,6 +203,7 @@ app.post('/mcp/context', async (req, res) => {
     project_name,
     repo_url,
     context_files,
+    create_pr,
   } = req.body;
 
   if (!context_files || !Array.isArray(context_files)) {
@@ -200,7 +211,7 @@ app.post('/mcp/context', async (req, res) => {
   }
 
   try {
-    const githubToken = process.env.GITHUB_TOKEN;
+    const githubToken = environments.GITHUB_TOKEN;
     const headers = {
       Authorization: `token ${githubToken}`,
       Accept: 'application/vnd.github.v3+json',
@@ -231,7 +242,7 @@ app.post('/mcp/context', async (req, res) => {
 
     res.json({ results });
 
-    if (req.body.create_pr) {
+    if (create_pr) {
       setTimeout(async () => {
         await createAutoPR(repo_url, context_files, results);
       }, 0);
@@ -247,6 +258,47 @@ app.get('/', (req, res) => {
   res.send('Servidor de revisión de código con IA corriendo.');
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+async function listGithubFilesRecursive(owner, repo, path = '', accumulator = [], filterExts = []) {
+  const githubToken = environments.GITHUB_TOKEN;
+  const headers = {
+    Authorization: `token ${githubToken}`,
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const response = await axios.get(url, { headers });
+
+  for (const item of response.data) {
+    if (item.type === 'file') {
+      if (filterExts.length === 0 || filterExts.some(ext => item.path.endsWith(ext))) {
+        accumulator.push(item.path);
+      }
+    } else if (item.type === 'dir') {
+      await listGithubFilesRecursive(owner, repo, item.path, accumulator, filterExts);
+    }
+  }
+
+  return accumulator;
+}
+
+app.post('/mcp/files', async (req, res) => {
+  const { repo_url, extensions } = req.body; // extensions es opcional
+  
+  if (!repo_url) {
+    return res.status(400).json({ error: 'Se requiere repo_url' });
+  }
+
+  const [owner, repo] = repo_url.split('/').slice(-2);
+
+  try {
+    const files = await listGithubFilesRecursive(owner, repo, '', [], extensions || []);
+    res.json({ files });
+  } catch (error) {
+    console.error('Error al listar archivos del repositorio:', error.message);
+    res.status(500).json({ error: 'No se pudieron listar los archivos del repositorio' });
+  }
+});
+
+app.listen(environments.PORT, () => {
+  console.log(`Servidor escuchando en http://localhost:${environments.PORT}`);
 });

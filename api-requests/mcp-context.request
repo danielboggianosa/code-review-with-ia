@@ -1,9 +1,0 @@
-POST http://localhost:3000/mcp/context
-Content-Type: application/json
-
-{
-  "project_name": "money-app",
-  "repo_url": "https://github.com/Global-S1/globals1-moneyapp-back-front",
-  "context_files": ["backend/src/models/user.model.js"],
-  "create_pr": true
-}

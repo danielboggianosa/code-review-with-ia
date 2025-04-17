@@ -1,0 +1,34 @@
+POST http://localhost:3004/mcp/context
+Content-Type: application/json
+
+{
+  "project_name": "money-app",
+  "repo_url": "https://github.com/Global-S1/globals1-moneyapp-back-front",
+  "context_files": [
+    "backend/environments.js",
+    "backend/index.js",
+    "backend/package-lock.json",
+    "backend/package.json",
+    "backend/pnpm-lock.yaml",
+    "backend/src/config/db.config.js",
+    "backend/src/config/index.js",
+    "backend/src/controllers/account.controller.js",
+    "backend/src/controllers/budget.cotroller.js",
+    "backend/src/controllers/category.controller.js",
+    "backend/src/controllers/index.js",
+    "backend/src/controllers/transaction.controller.js",
+    "backend/src/controllers/user.controller.js",
+    "backend/src/middlewares/index.js",
+    "backend/src/models/account.model.js",
+    "backend/src/models/budget.model.js",
+    "backend/src/models/category.model.js",
+    "backend/src/models/index.js",
+    "backend/src/models/transaction.model.js",
+    "backend/src/models/user.model.js",
+    "backend/src/routes/account.routes.js",
+    "backend/src/routes/index.js",
+    "backend/src/routes/user.routes.js",
+    "backend/src/services/index.js",
+  ],
+  "create_pr": true
+}

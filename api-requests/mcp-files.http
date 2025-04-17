@@ -1,0 +1,6 @@
+POST http://localhost:3004/mcp/files
+Content-Type: application/json
+
+{
+  "repo_url": "https://github.com/Global-S1/globals1-moneyapp-back-front"
+}

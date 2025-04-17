@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Revisión de Código con IA</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f6f8;
+      margin: 0;
+      padding: 2rem;
+      color: #333;
+    }
+  
+    h1 {
+      color: #222;
+      text-align: center;
+    }
+  
+    label {
+      font-weight: bold;
+      margin-right: 0.5rem;
+    }
+  
+    input[type="text"] {
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 50%;
+      font-size: 1rem;
+    }
+  
+    button {
+      margin-left: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    button.folder-toggle {
+      background-color: #28a745;
+      padding: 0.1rem 0.4rem;
+    }
+  
+    #archivosContainer {
+      margin-top: 1.5rem;
+      background-color: #fff;
+      border-radius: 6px;
+      padding: 1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  
+    #archivosContainer div {
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+    }
+  
+    #archivosContainer label {
+      margin-left: 0.5rem;
+      font-size: 0.95rem;
+    }
+  
+    .section {
+      margin: 1rem 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+    }
+  
+    .button-group {
+      display: flex;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Revisión de Código con IA</h1>
+  
+  <label for="repoUrl">URL del repositorio:</label>
+  <input type="text" id="repoUrl" placeholder="https://github.com/usuario/repositorio" size="60" />
+  <button onclick="obtenerArchivos()">Obtener archivos</button>
+  
+  <div id="loader" style="display:none; text-align: center; margin-top: 1rem;">
+    <span>Cargando archivos...</span>
+  </div>
+  
+  <div id="archivosContainer" style="margin-top: 20px;"></div>
+  
+  <button id="enviarBtn" onclick="enviarSeleccionados()">Enviar archivos seleccionados</button>
+  
+  <script>
+    function groupFilesByFolder(files) {
+      const tree = {};
+      files.forEach(path => {
+        const parts = path.split('/');
+        let current = tree;
+        parts.forEach((part, index) => {
+          if (!current[part]) {
+            current[part] = index === parts.length - 1 ? null : {};
+          }
+          current = current[part];
+        });
+      });
+      return tree;
+    }
+
+    function createFileTree(container, tree, parentPath = '') {
+      Object.keys(tree).forEach(key => {
+        const fullPath = parentPath ? `${parentPath}/${key}` : key;
+        const item = document.createElement('div');
+
+        if (tree[key] === null) {
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = fullPath;
+          checkbox.className = 'file-checkbox';
+          checkbox.style.marginLeft = '3rem';
+          const label = document.createElement('label');
+          label.textContent = key;
+          label.style.marginLeft = '0.5rem';
+          item.appendChild(checkbox);
+          item.appendChild(label);
+        } else {
+          const folderToggle = document.createElement('button');
+          folderToggle.className = 'folder-toggle';
+          folderToggle.textContent = '+';
+          folderToggle.style.marginRight = '0.5rem';
+          folderToggle.style.cursor = 'pointer';
+          folderToggle.onclick = () => {
+            subContainer.style.display = subContainer.style.display === 'none' ? 'block' : 'none';
+            folderToggle.textContent = folderToggle.textContent === '+' ? '−' : '+';
+          };
+
+          const groupCheckbox = document.createElement('input');
+          groupCheckbox.type = 'checkbox';
+          groupCheckbox.className = 'group-checkbox';
+          groupCheckbox.dataset.path = fullPath;
+
+          groupCheckbox.onchange = () => {
+            const descendants = subContainer.querySelectorAll('input[type="checkbox"]');
+            descendants.forEach(cb => cb.checked = groupCheckbox.checked);
+          };
+
+          const label = document.createElement('label');
+          label.textContent = key;
+          label.style.marginLeft = '0.5rem';
+
+          const subContainer = document.createElement('div');
+          subContainer.style.display = 'none';
+          subContainer.style.marginLeft = '1rem';
+
+          createFileTree(subContainer, tree[key], fullPath);
+
+          item.appendChild(folderToggle);
+          item.appendChild(groupCheckbox);
+          item.appendChild(label);
+          item.appendChild(subContainer);
+        }
+
+        container.appendChild(item);
+      });
+    }
+
+    async function obtenerArchivos() {
+      const url = document.getElementById('repoUrl').value;
+      document.getElementById('loader').style.display = 'block';
+      const res = await fetch('http://localhost:3004/mcp/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: url })
+      });
+
+      const data = await res.json();
+      document.getElementById('loader').style.display = 'none';
+      const container = document.getElementById('archivosContainer');
+      container.innerHTML = '';
+
+      const enviarBtn = document.getElementById('enviarBtn');
+      if (data.files && data.files.length > 0) {
+        const tree = groupFilesByFolder(data.files);
+        createFileTree(container, tree);
+        container.style.display = 'block';
+        enviarBtn.style.display = 'block';
+      } else {
+        container.textContent = 'No se encontraron archivos.';
+        container.style.display = 'block';
+        enviarBtn.style.display = 'none';
+      }
+    }
+
+    async function enviarSeleccionados() {
+      const checkboxes = document.querySelectorAll('#archivosContainer input[type="checkbox"].file-checkbox:checked');
+      const archivosSeleccionados = Array.from(checkboxes).map(cb => cb.value);
+      const repoUrl = document.getElementById('repoUrl').value;
+
+
+      const res = await fetch('http://localhost:3004/mcp/context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_name: 'Proyecto de ejemplo',
+          repo_url: repoUrl,
+          context_files: archivosSeleccionados,
+          create_pr: true
+        })
+      });
+
+      const resultado = await res.json();
+      alert('Revisión enviada. Resultado en consola.');
+      console.log(resultado);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('archivosContainer').style.display = 'none';
+      document.getElementById('enviarBtn').style.display = 'none';
+    });
+  </script>
+</body>
+</html>
