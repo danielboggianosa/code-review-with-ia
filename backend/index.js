@@ -131,6 +131,7 @@ async function createAutoPR(repo_url, context_files, results) {
 
       const updated = results[i][0]
         .replace('```javascript\n', '')
+        .replace('```js\n', '')
         .replace('```\n\n', '');
 
       fs.writeFileSync(filePath, updated, 'utf8');
